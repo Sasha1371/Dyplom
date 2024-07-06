@@ -1,33 +1,54 @@
 #!/bin/bash
 
-# Пуллінг останнього образу Jenkins
-docker pull jenkins/jenkins
+# Add user to Docker group (if script #3 is desired)
+read -p "Add user to Docker group? (y/N): " add_to_docker
+if [[ "$add_to_docker" =~ ^[Yy]$ ]]; then
+  read -p "Enter username: " username
+  sudo usermod -aG docker "$username"
+  sudo service docker restart
+fi
 
-# Створення каталогу для зберігання даних Jenkins
-mkdir -p /var/jenkins_home
+# Pull Jenkins Docker image
+echo "Pulling Jenkins Docker image..."
+sudo docker pull jenkins/jenkins
 
-# Налаштування прав доступу до каталогу
-chmod 777 /var/jenkins_home/ -R
+# Remove existing Jenkins container if it exists
+if sudo docker ps -a --format '{{.Names}}' | grep -Eq "^jenkins\$"; then
+  echo "Removing existing Jenkins container..."
+  sudo docker rm -f jenkins
+fi
 
-# Запуск Jenkins у контейнері Docker
-docker run -p 8080:8080 -d -v /var/jenkins_home:/var/jenkins_home/ jenkins/jenkins
+# Run Jenkins Docker container on port 8080
+echo "Running Jenkins Docker container..."
+sudo docker run -d --name jenkins -p 8080:8080 -p 50000:50000 jenkins/jenkins
 
-# Генерація SSH ключів
-echo "y" | ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -C "sashadrozdov@icloud.com" -P ""
+# Display initial Jenkins password
+echo "Waiting for Jenkins to initialize..."
+sleep 30
+echo "Initial Jenkins admin password:"
+sudo docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 
-# Підготовка каталогу та копіювання SSH ключів для Jenkins
-mkdir -p /var/lib/jenkins/.ssh/
-cp /root/.ssh/id_ed25519 /var/lib/jenkins/.ssh/
-cp /root/.ssh/id_ed25519.pub /var/lib/jenkins/.ssh/
-chmod 700 /var/lib/jenkins/.ssh/
-chmod 600 /var/lib/jenkins/.ssh/id_ed25519
-chmod 644 /var/lib/jenkins/.ssh/id_ed25519.pub
+# Generate SSH key inside Jenkins Docker container
+echo "Generating SSH key inside Jenkins Docker container..."
 
-# Вивід ключів та паролю для першого входу
-echo -e "\n\t КЛЮЧ ВІД JENKINS\n"
-cat /var/jenkins_home/secrets/initialAdminPassword
-echo -e "\n\t SSH_KEY.pub\n"
-cat /root/.ssh/id_ed25519.pub
-echo -e "\n\t SSH_KEY.priv\n"
-cat /root/.ssh/id_ed25519
-echo -e "\n\n"
+# Create .ssh directory in Jenkins home if it doesn't exist
+sudo docker exec jenkins bash -c 'mkdir -p /var/jenkins_home/.ssh/'
+
+# Generate SSH key pair
+sudo docker exec -u jenkins jenkins ssh-keygen -t ed25519 -f /var/jenkins_home/.ssh/id_ed25519 -C "sashadrozdov@icloud.com" -q -N ""
+
+# Display Jenkins generated SSH public key
+echo "Jenkins SSH public key:"
+sudo docker exec jenkins cat /var/jenkins_home/.ssh/id_ed25519.pub
+
+# Display Jenkins generated SSH private key (for demonstration purposes, it's not recommended to display private keys)
+echo "Jenkins SSH private key (**WARNING: Do not share this**):"
+sudo docker exec jenkins cat /var/jenkins_home/.ssh/id_ed25519
+
+# Add GitHub to known hosts for the Jenkins container
+echo "Adding GitHub to known hosts for Jenkins container..."
+sudo docker exec jenkins bash -c 'ssh-keyscan -t ed25519 github.com >> /var/jenkins_home/.ssh/known_hosts'
+
+# Verifying known hosts
+echo "Verifying known hosts:"
+sudo docker exec jenkins cat /var/jenkins_home/.ssh/known_hosts
