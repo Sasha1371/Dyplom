@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Add user to Docker group (if script #3 is desired)
 read -p "Add user to Docker group? (y/N): " add_to_docker
 if [[ "$add_to_docker" =~ ^[Yy]$ ]]; then
@@ -7,6 +6,10 @@ if [[ "$add_to_docker" =~ ^[Yy]$ ]]; then
   sudo usermod -aG docker "$username"
   sudo service docker restart
 fi
+
+# Change permissions on Docker socket
+echo "Changing permissions on Docker socket..."
+sudo chmod 666 /var/run/docker.sock
 
 # Pull Jenkins Docker image
 echo "Pulling Jenkins Docker image..."
@@ -20,7 +23,14 @@ fi
 
 # Run Jenkins Docker container on port 8080
 echo "Running Jenkins Docker container..."
-sudo docker run -d --name jenkins -p 8080:8080 -p 50000:50000 -v /var/jenkins_home:/var/jenkins_home -v /var/run/docker.sock:/var/run/docker.sock --user=root jenkins/jenkins
+sudo docker run -d \
+  --name jenkins \
+  --privileged \
+  -p 8080:8080 \
+  -p 50000:50000 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v jenkins_home:/var/jenkins_home \
+  jenkins/jenkins:lts
 
 # Display initial Jenkins password
 echo "Waiting for Jenkins to initialize..."
@@ -30,10 +40,8 @@ sudo docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 
 # Generate SSH key inside Jenkins Docker container
 echo "Generating SSH key inside Jenkins Docker container..."
-
 # Create .ssh directory in Jenkins home if it doesn't exist
 sudo docker exec jenkins bash -c 'mkdir -p /var/jenkins_home/.ssh/'
-
 # Generate SSH key pair
 sudo docker exec -u jenkins jenkins ssh-keygen -t ed25519 -f /var/jenkins_home/.ssh/id_ed25519 -C "sashadrozdov@icloud.com" -q -N ""
 
