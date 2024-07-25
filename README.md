@@ -11,7 +11,7 @@
 
 1. Клонуйте репозиторій:
 2. 
-   git clone https://github.com/Dymplom.git
+   https://github.com/Sasha1371/Dymplom.git
 
 Запустіть скрипт налаштування:
 
